@@ -8,10 +8,6 @@ const app = express();
 app.use(express.static("dist"));
 app.use(cors());
 
-app.get("/api/getUsername", (req, res) =>
-  res.send({ username: os.userInfo().username })
-);
-
 app.get("/alerts", (req, res) => {
   res.set({
     "Cache-Control": "no-cache",
