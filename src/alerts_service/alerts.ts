@@ -1,9 +1,8 @@
 import * as FeedParser from "feedparser";
 import axios from "axios";
 import * as stringToStream from "string-to-stream";
-import { Alert } from "./alert";
-
-const STREAM_URL = "https://alerts.weather.gov/cap/us.php?x=0";
+import { Alert } from "../utils/alert";
+import { ALERTS_ATOM_URL } from "../utils";
 
 export const getAlerts = (debug: boolean = false): Promise<Alert[]> => {
   const feedParser = new FeedParser({});
@@ -11,7 +10,7 @@ export const getAlerts = (debug: boolean = false): Promise<Alert[]> => {
 
   return new Promise((resolve, reject) => {
     axios
-      .get(STREAM_URL)
+      .get(ALERTS_ATOM_URL)
       .then((res) => {
         if (res.status !== 200) return reject("Request was not successful");
         return stringToStream(res.data).pipe(feedParser);

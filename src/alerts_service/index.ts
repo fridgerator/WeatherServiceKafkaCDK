@@ -1,28 +1,30 @@
 import { Producer } from "node-rdkafka";
 import { getAlerts } from "./alerts";
-import { Alert } from "./alert";
+import { Alert } from "../utils/alert";
 
-const BOOTSTRAP_SERVERS =
-  process.env.NODE_ENV === "prod"
-    ? process.env.BOOTSTRAP_SERVERS!
-    : "localhost:29092,localhost:29093";
-const DEBUG = process.env.NODE_ENV !== "prod";
+import {
+  BOOTSTRAP_SERVERS,
+  DEBUG,
+  WEATHER_ALERTS_TOPIC,
+  getState,
+} from "../utils";
 
 const producer = new Producer({
   "bootstrap.servers": BOOTSTRAP_SERVERS,
   dr_msg_cb: true,
 });
 
-const topic = "weather_alerts";
 const alertsCache: { [key: string]: Date } = {};
-
-const getState = (alert: Alert): string => {
-  return alert["cap:geocode"].value[1]["#"].split(" ")[0].substring(0, 2);
-};
 
 const produceAlerts = async () => {
   if (DEBUG) console.log("producing alerts");
-  const alerts = await getAlerts();
+  let alerts: Alert[] = [];
+  try {
+    alerts = await getAlerts(DEBUG);
+  } catch (e) {
+    console.log("hmmm : ", e);
+    return;
+  }
   const newAlerts: Alert[] = [];
 
   alerts.forEach((alert) => {
@@ -34,18 +36,27 @@ const produceAlerts = async () => {
 
   if (DEBUG) console.log("new alerts : ", newAlerts.length);
 
-  newAlerts.forEach((alert) => {
-    const state = getState(alert);
-    producer.produce(topic, -1, Buffer.from(JSON.stringify(alert)), state);
-  });
+  if (newAlerts.length > 100) {
+    if (DEBUG) console.log("too many alerts, skipping");
+  } else {
+    newAlerts.forEach((alert) => {
+      const state = getState(alert);
+      producer.produce(
+        WEATHER_ALERTS_TOPIC,
+        -1,
+        Buffer.from(JSON.stringify(alert)),
+        state
+      );
+    });
 
-  producer.flush(10000, () => {
-    if (DEBUG) console.log("flushed data");
-  });
+    producer.flush(10000, () => {
+      if (DEBUG) console.log("flushed data");
+    });
+  }
 
   setTimeout(() => {
     produceAlerts();
-  }, 30 * 1000);
+  }, 60 * 1000);
 };
 
 producer

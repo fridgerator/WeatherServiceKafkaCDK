@@ -7,6 +7,7 @@
     "go": "ts-node src/index.ts"
   },
   "dependencies": {
+    "@aws-sdk/client-sns": "^3.312.0",
     "axios": "^1.3.5",
     "feedparser": "^2.2.10",
     "node-fetch": "^3.3.1",
