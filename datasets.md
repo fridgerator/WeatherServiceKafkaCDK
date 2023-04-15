@@ -1,0 +1,2 @@
+- https://stackoverflow.com/questions/22535217/whats-are-some-real-time-data-sources
+- https://www.ciese.org/materials/resources/realtimedata/
