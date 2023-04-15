@@ -1,0 +1,14 @@
+h1 {
+  color: green;
+}
+
+body {
+  text-align: center;
+  margin: auto;
+}
+
+#map {
+  width: 1200px;
+  height: 800px;
+  margin: auto;
+}
