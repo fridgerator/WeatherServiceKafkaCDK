@@ -1,6 +1,6 @@
-import * as FeedParser from "feedparser";
+import FeedParser from "feedparser";
 import axios from "axios";
-import * as stringToStream from "string-to-stream";
+import stringToStream from "string-to-stream";
 import { Alert } from "../../../utils/alert";
 import { ALERTS_ATOM_URL } from "../../../utils/index";
 

@@ -56,6 +56,6 @@ const produceAlerts = async () => {
 export const weatherServiceHandler = async () => {
   console.log("Alerts cache size : ", Object.keys(alertsCache).length);
 
-  // await producer.connect()
+  await producer.connect();
   await produceAlerts();
 };
