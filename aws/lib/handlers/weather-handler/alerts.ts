@@ -1,9 +1,8 @@
 import * as FeedParser from "feedparser";
 import axios from "axios";
 import * as stringToStream from "string-to-stream";
-import { Alert } from "./alert";
-
-const ALERTS_ATOM_URL = "https://alerts.weather.gov/cap/us.php?x=0";
+import { Alert } from "../../../utils/alert";
+import { ALERTS_ATOM_URL } from "../../../utils/index";
 
 export const getAlerts = (debug: boolean = false): Promise<Alert[]> => {
   const feedParser = new FeedParser({});

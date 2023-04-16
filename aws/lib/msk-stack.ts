@@ -62,7 +62,7 @@ export class MskStack extends Stack {
       parameterName: "/msk/cluster-arn",
     });
 
-    new StringParameter(this, "msk-cluster-arn", {
+    new StringParameter(this, "msk-cluster-sg", {
       stringValue: mskCluster.connections.securityGroups[0].securityGroupId,
       parameterName: "/msk/cluster-sg",
     });

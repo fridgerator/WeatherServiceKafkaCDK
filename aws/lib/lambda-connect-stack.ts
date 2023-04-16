@@ -21,7 +21,7 @@ import { Runtime } from "aws-cdk-lib/aws-lambda";
 const PLUGIN_BUCKET = "msk-connect-plugin-bucket";
 const PLUGIN_FILE = "confluentinc-kafka-connect-aws-lambda-2.0.6";
 
-export class MskConnectStack extends Stack {
+export class LambdaConnectStack extends Stack {
   props: StackProps;
 
   constructor(scope: Construct, id: string, props: StackProps) {
