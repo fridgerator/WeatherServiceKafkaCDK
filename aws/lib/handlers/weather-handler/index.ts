@@ -13,6 +13,7 @@ import {
 const kafka = new Kafka({
   clientId: "weather_alerts",
   brokers: BOOTSTRAP_SERVERS.split(","),
+  ssl: true,
 });
 const producer = kafka.producer({
   allowAutoTopicCreation: true,

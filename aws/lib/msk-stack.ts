@@ -57,21 +57,6 @@ export class MskStack extends Stack {
       parameterName: "/msk/bootstrap-brokers",
     });
 
-    // new StringParameter(this, "msk-brokers-plain", {
-    //   stringValue: mskCluster.bootstrapBrokers,
-    //   parameterName: "/msk/bootstrap-brokers-plain",
-    // });
-
-    // new StringParameter(this, "msk-brokers-sasliam", {
-    //   stringValue: mskCluster.bootstrapBrokersSaslIam,
-    //   parameterName: "/msk/bootstrap-brokers-sasliam",
-    // });
-
-    // new StringParameter(this, "msk-brokers-saslScram", {
-    //   stringValue: mskCluster.bootstrapBrokersSaslScram,
-    //   parameterName: "/msk/bootstrap-brokers-saslScram",
-    // });
-
     new StringParameter(this, "msk-cluster-arn", {
       stringValue: mskCluster.clusterArn,
       parameterName: "/msk/cluster-arn",
