@@ -8,7 +8,7 @@ const App = () => {
   const [map, setMap] = useState(null);
   const [polys, setPolys] = useState([]);
 
-  const source = new EventSource("http://localhost:8080/alerts");
+  const source = new EventSource("/api/alerts");
 
   useEffect(() => {
     source.onmessage = (e) => {

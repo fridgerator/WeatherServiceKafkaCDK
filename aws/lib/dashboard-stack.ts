@@ -20,6 +20,11 @@ export class DashboardStack extends Stack {
       vpcName: "msk-vpc",
     });
 
+    // const vpc = new Vpc(this, "msk-vpc", {
+    //   maxAzs: 2,
+    //   vpcName: "msk-vpc",
+    // });
+
     const cluster = new Cluster(this, "dashboard-fargate-cluster", {
       vpc,
     });
@@ -37,9 +42,17 @@ export class DashboardStack extends Stack {
         cpu: 512,
         taskImageOptions: {
           image: ContainerImage.fromDockerImageAsset(dockerImage),
+          containerPort: 8080,
         },
         assignPublicIp: true,
       }
     );
+    service.targetGroup.configureHealthCheck({
+      path: "/health",
+    });
+
+    new CfnOutput(this, "service-dns", {
+      value: service.loadBalancer.loadBalancerDnsName,
+    });
   }
 }

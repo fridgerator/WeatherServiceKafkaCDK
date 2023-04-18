@@ -1,5 +1,4 @@
 const express = require("express");
-const os = require("os");
 var cors = require("cors");
 const { events } = require("./kafka");
 
@@ -8,7 +7,7 @@ const app = express();
 app.use(express.static("dist"));
 app.use(cors());
 
-app.get("/alerts", (req, res) => {
+app.get("/api/alerts", (_req, res) => {
   res.set({
     "Cache-Control": "no-cache",
     "Content-Type": "text/event-stream",
@@ -19,6 +18,10 @@ app.get("/alerts", (req, res) => {
   events.on("alert", (alert) => {
     res.write(`data: ${JSON.stringify(alert)}\n\n`);
   });
+});
+
+app.get("/health", (_req, res) => {
+  res.send({ ok: "ok" });
 });
 
 app.listen(process.env.PORT || 8080, () =>
