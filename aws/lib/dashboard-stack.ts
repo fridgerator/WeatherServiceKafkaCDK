@@ -3,6 +3,7 @@ import { Vpc } from "aws-cdk-lib/aws-ec2";
 import { DockerImageAsset } from "aws-cdk-lib/aws-ecr-assets";
 import { Cluster, ContainerImage } from "aws-cdk-lib/aws-ecs";
 import { ApplicationLoadBalancedFargateService } from "aws-cdk-lib/aws-ecs-patterns";
+import { StringParameter } from "aws-cdk-lib/aws-ssm";
 import { Construct } from "constructs";
 import * as path from "path";
 
@@ -20,11 +21,6 @@ export class DashboardStack extends Stack {
       vpcName: "msk-vpc",
     });
 
-    // const vpc = new Vpc(this, "msk-vpc", {
-    //   maxAzs: 2,
-    //   vpcName: "msk-vpc",
-    // });
-
     const cluster = new Cluster(this, "dashboard-fargate-cluster", {
       vpc,
     });
@@ -32,6 +28,12 @@ export class DashboardStack extends Stack {
     const dockerImage = new DockerImageAsset(this, "dashboard-fargate-image", {
       directory: path.join(__dirname, "../../src/alerts_dashboard"),
     });
+
+    const boostrapParam = StringParameter.fromStringParameterName(
+      this,
+      "msk-brokers-from-param",
+      "/msk/bootstrap-brokers"
+    );
 
     const service = new ApplicationLoadBalancedFargateService(
       this,
@@ -43,6 +45,10 @@ export class DashboardStack extends Stack {
         taskImageOptions: {
           image: ContainerImage.fromDockerImageAsset(dockerImage),
           containerPort: 8080,
+          environment: {
+            NODE_ENV: "prod",
+            BOOTSTRAP_SERVERS: boostrapParam.stringValue,
+          },
         },
         assignPublicIp: true,
       }

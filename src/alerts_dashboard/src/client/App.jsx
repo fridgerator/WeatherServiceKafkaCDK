@@ -8,18 +8,20 @@ const App = () => {
   const [map, setMap] = useState(null);
   const [polys, setPolys] = useState([]);
 
-  const source = new EventSource("/api/alerts");
-
   useEffect(() => {
+    if (!map) return;
+    const source = new EventSource("/api/alerts");
     source.onmessage = (e) => {
       const alert = JSON.parse(e.data);
-      if (map) {
-        const polygon = L.polygon(alert.poly)
-          .addTo(map)
-          .bindTooltip(alert.title, { direction: "top" });
-        setAlerts((alerts) => [...alerts, alert]);
-        setPolys((polys) => [...polys, polygon]);
-      }
+      const polygon = L.polygon(alert.poly)
+        .addTo(map)
+        .bindTooltip(alert.title, { direction: "top" });
+      setAlerts((alerts) => [...alerts, alert]);
+      setPolys((polys) => [...polys, polygon]);
+    };
+
+    return () => {
+      source.close();
     };
   }, [map]);
 

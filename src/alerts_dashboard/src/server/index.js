@@ -1,6 +1,6 @@
 const express = require("express");
 var cors = require("cors");
-const { events } = require("./kafka");
+const { consumerEvents, startConsumer } = require("./kafka");
 
 const app = express();
 
@@ -15,8 +15,15 @@ app.get("/api/alerts", (_req, res) => {
   });
   res.flushHeaders();
 
-  events.on("alert", (alert) => {
+  const listener = (alert) => {
     res.write(`data: ${JSON.stringify(alert)}\n\n`);
+  };
+
+  consumerEvents.on("alert", listener);
+
+  res.on("close", () => {
+    consumerEvents.off("alert", listener);
+    res.end();
   });
 });
 
@@ -24,6 +31,7 @@ app.get("/health", (_req, res) => {
   res.send({ ok: "ok" });
 });
 
-app.listen(process.env.PORT || 8080, () =>
-  console.log(`Listening on port ${process.env.PORT || 8080}!`)
-);
+app.listen(process.env.PORT || 8080, () => {
+  startConsumer();
+  console.log(`Listening on port ${process.env.PORT || 8080}!`);
+});
