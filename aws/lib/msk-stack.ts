@@ -13,10 +13,21 @@ import {
   Peer,
   Port,
 } from "aws-cdk-lib/aws-ec2";
-import { ManagedPolicy, Role, ServicePrincipal } from "aws-cdk-lib/aws-iam";
+import {
+  Effect,
+  ManagedPolicy,
+  PolicyStatement,
+  Role,
+  ServicePrincipal,
+} from "aws-cdk-lib/aws-iam";
 import * as fs from "fs";
 import { Cluster, KafkaVersion } from "@aws-cdk/aws-msk-alpha";
 import { StringParameter } from "aws-cdk-lib/aws-ssm";
+import {
+  AwsCustomResource,
+  AwsCustomResourcePolicy,
+  PhysicalResourceId,
+} from "aws-cdk-lib/custom-resources";
 
 export class MskStack extends Stack {
   props: StackProps;
@@ -33,6 +44,57 @@ export class MskStack extends Stack {
       vpcName: "msk-vpc",
     });
 
+    const configuration = new AwsCustomResource(this, "create-msk-config", {
+      policy: AwsCustomResourcePolicy.fromStatements([
+        new PolicyStatement({
+          effect: Effect.ALLOW,
+          actions: ["kafka:CreateConfiguration"],
+          resources: ["*"],
+        }),
+      ]),
+      onCreate: {
+        service: "Kafka",
+        action: "createConfiguration",
+        physicalResourceId: PhysicalResourceId.of("kafkaConfig"),
+        parameters: {
+          Name: "MskClusterConfig",
+          Description: "MSK cluster config",
+          ServerProperties: "auto.create.topics.enable = true",
+        },
+      },
+      onUpdate: {
+        service: "Kafka",
+        action: "createConfiguration",
+        parameters: {
+          Name: "MskClusterConfig",
+          Description: "MSK cluster config",
+          ServerProperties: "auto.create.topics.enable = true",
+        },
+      },
+    });
+
+    const deleteConfiguration = new AwsCustomResource(
+      this,
+      "delete-msk-config",
+      {
+        policy: AwsCustomResourcePolicy.fromStatements([
+          new PolicyStatement({
+            effect: Effect.ALLOW,
+            actions: ["kafka:DeleteConfiguration"],
+            resources: ["*"],
+          }),
+        ]),
+        onDelete: {
+          service: "Kafka",
+          action: "deleteConfiguration",
+          parameters: {
+            arn: configuration.getResponseField("Arn"),
+          },
+        },
+      }
+    );
+    deleteConfiguration.node.addDependency(configuration);
+
     const mskCluster = new Cluster(this, "msk-cluster", {
       clusterName: "msk-cluster",
       kafkaVersion: KafkaVersion.V2_8_1,
@@ -40,7 +102,12 @@ export class MskStack extends Stack {
       vpc,
       instanceType: InstanceType.of(InstanceClass.T3, InstanceSize.SMALL),
       removalPolicy: RemovalPolicy.DESTROY,
+      configurationInfo: {
+        arn: configuration.getResponseField("Arn"),
+        revision: 1,
+      },
     });
+    mskCluster.node.addDependency(configuration);
 
     mskCluster.connections.allowFrom(
       Peer.ipv4(vpc.vpcCidrBlock),
