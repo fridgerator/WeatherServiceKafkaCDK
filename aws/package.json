@@ -9,7 +9,9 @@
     "watch": "tsc -w",
     "test": "jest",
     "cdk": "cdk",
-    "build:handlers": "esbuild lib/handlers/weather-handler/index.ts --bundle --outfile=lib/handlers/weather-handler/index.js --platform=node"
+    "build:lambda-sink": "esbuild lib/handlers/lambda-sink/index.ts --bundle --outfile=lib/handlers/lambda-sink/index.js --platform=node",
+    "build:weather-handler": "esbuild lib/handlers/weather-handler/index.ts --bundle --outfile=lib/handlers/weather-handler/index.js --platform=node",
+    "build:handlers": "yarn build:lambda-sink && yarn build:weather-handler"
   },
   "devDependencies": {
     "@types/feedparser": "^2.2.5",

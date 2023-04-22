@@ -1,6 +1,11 @@
-import { CfnOutput, RemovalPolicy, Stack, StackProps } from "aws-cdk-lib";
+import {
+  CfnOutput,
+  Duration,
+  RemovalPolicy,
+  Stack,
+  StackProps,
+} from "aws-cdk-lib";
 import { Construct } from "constructs";
-
 import {
   Effect,
   PolicyStatement,
@@ -14,12 +19,16 @@ import {
   PhysicalResourceId,
 } from "aws-cdk-lib/custom-resources";
 import { StringParameter } from "aws-cdk-lib/aws-ssm";
-import { Vpc } from "aws-cdk-lib/aws-ec2";
+import { SubnetType, Vpc } from "aws-cdk-lib/aws-ec2";
 import { NodejsFunction } from "aws-cdk-lib/aws-lambda-nodejs";
 import { Runtime } from "aws-cdk-lib/aws-lambda";
 
+import { WEATHER_ALERTS_TOPIC } from "../utils";
+import path from "path";
+import { Topic } from "aws-cdk-lib/aws-sns";
+
 const PLUGIN_BUCKET = "msk-connect-plugin-bucket";
-const PLUGIN_FILE = "confluentinc-kafka-connect-aws-lambda-2.0.6";
+const PLUGIN_FILE = "confluentinc-kafka-connect-aws-lambda-2.0.6.zip";
 
 export class LambdaConnectStack extends Stack {
   props: StackProps;
@@ -93,9 +102,7 @@ export class LambdaConnectStack extends Stack {
           service: "KafkaConnect",
           action: "deleteCustomPlugin",
           parameters: {
-            customPluginArn: plugin
-              .getResponseFieldReference("customPluginArn")
-              .toString(),
+            customPluginArn: plugin.getResponseField("customPluginArn"),
           },
         },
       }
@@ -110,7 +117,7 @@ export class LambdaConnectStack extends Stack {
 
     const sgParam = StringParameter.fromStringParameterName(
       this,
-      "msk-brokers-from-param",
+      "sg-from-param",
       "/msk/cluster-sg"
     );
 
@@ -118,14 +125,35 @@ export class LambdaConnectStack extends Stack {
       vpcName: "msk-vpc",
     });
 
-    const weatherFunction = new NodejsFunction(this, "weather-handler", {
-      functionName: "weather-handler",
-      entry: "./handlers/weather-handler",
-      handler: "weather-handler",
+    let topicsMap: { [key: string]: string } = {
+      NE: "",
+      TS: "",
+      IL: "",
+      MA: "",
+      TN: "",
+    };
+
+    for (let state of Object.keys(topicsMap)) {
+      const topic = new Topic(this, `STATE_${state}`, {
+        topicName: `STATE_${state}`,
+      });
+      topicsMap[state] = topic.topicArn;
+    }
+
+    const weatherFunction = new NodejsFunction(this, "lambda-sink", {
+      functionName: "lambda-sink",
+      entry: path.join(__dirname, "handlers", "lambda-sink/index.js"),
+      handler: "lambdaSinkHandler",
       runtime: Runtime.NODEJS_16_X,
       environment: {
         BOOTSTRAP_SERVERS: boostrapParam.stringValue,
         NODE_ENV: "prod",
+        TOPICS_MAP: JSON.stringify(topicsMap),
+      },
+      timeout: Duration.minutes(1),
+      vpc,
+      vpcSubnets: {
+        subnetType: SubnetType.PRIVATE_WITH_EGRESS,
       },
     });
 
@@ -139,22 +167,34 @@ export class LambdaConnectStack extends Stack {
         resources: ["*"], // TODO: lambda arn
       })
     );
+    mskConnectRole.addToPolicy(
+      new PolicyStatement({
+        effect: Effect.ALLOW,
+        actions: ["kafka:*"],
+        resources: ["*"],
+      })
+    );
+    mskConnectRole.addToPolicy(
+      new PolicyStatement({
+        effect: Effect.ALLOW,
+        actions: ["kafka-connect:*"],
+        resources: ["*"],
+      })
+    );
 
-    const kafkaConnectS3SinkConfig = {
+    const lambdaConfig = {
       "connector.class":
         "io.confluent.connect.aws.lambda.AwsLambdaSinkConnector",
       "tasks.max": "1",
-      topics: "nicks_topic", // Replace with your Kafka topic
-      "aws.lambda.function.name": "<Required Configuration>", // TODO: lambda name
-      "aws.lambda.invocation.type": "sync",
+      topics: WEATHER_ALERTS_TOPIC,
+      "aws.lambda.function.name": weatherFunction.functionName, // TODO: lambda name
+      "aws.lambda.invocation.type": "async",
       "aws.lambda.batch.size": "50",
       "format.class": "io.confluent.connect.s3.format.json.JsonFormat",
     };
 
     const props: CfnConnectorProps = {
-      connectorConfiguration: JSON.parse(
-        JSON.stringify(kafkaConnectS3SinkConfig)
-      ),
+      connectorConfiguration: lambdaConfig,
       connectorName: "msk-s3-sink-connector",
       kafkaCluster: {
         apacheKafkaCluster: {
@@ -167,7 +207,7 @@ export class LambdaConnectStack extends Stack {
       },
       capacity: {
         autoScaling: {
-          maxWorkerCount: 1,
+          maxWorkerCount: 2,
           mcuCount: 1,
           minWorkerCount: 1,
           scaleInPolicy: {
@@ -188,9 +228,7 @@ export class LambdaConnectStack extends Stack {
       plugins: [
         {
           customPlugin: {
-            customPluginArn: plugin
-              .getResponseFieldReference("customPluginArn")
-              .toString(),
+            customPluginArn: plugin.getResponseField("customPluginArn"),
             revision: 1,
           },
         },
