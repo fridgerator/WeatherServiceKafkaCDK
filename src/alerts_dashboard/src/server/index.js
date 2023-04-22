@@ -1,14 +1,13 @@
 const express = require("express");
-const os = require("os");
 var cors = require("cors");
-const { events } = require("./kafka");
+const { consumerEvents, startConsumer } = require("./kafka");
 
 const app = express();
 
 app.use(express.static("dist"));
 app.use(cors());
 
-app.get("/alerts", (req, res) => {
+app.get("/api/alerts", (_req, res) => {
   res.set({
     "Cache-Control": "no-cache",
     "Content-Type": "text/event-stream",
@@ -16,11 +15,23 @@ app.get("/alerts", (req, res) => {
   });
   res.flushHeaders();
 
-  events.on("alert", (alert) => {
+  const listener = (alert) => {
     res.write(`data: ${JSON.stringify(alert)}\n\n`);
+  };
+
+  consumerEvents.on("alert", listener);
+
+  res.on("close", () => {
+    consumerEvents.off("alert", listener);
+    res.end();
   });
 });
 
-app.listen(process.env.PORT || 8080, () =>
-  console.log(`Listening on port ${process.env.PORT || 8080}!`)
-);
+app.get("/health", (_req, res) => {
+  res.send({ ok: "ok" });
+});
+
+app.listen(process.env.PORT || 8080, () => {
+  startConsumer();
+  console.log(`Listening on port ${process.env.PORT || 8080}!`);
+});

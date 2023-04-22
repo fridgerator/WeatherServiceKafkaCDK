@@ -1,8 +1,8 @@
-import * as FeedParser from "feedparser";
+import FeedParser from "feedparser";
 import axios from "axios";
-import * as stringToStream from "string-to-stream";
-import { Alert } from "../utils/alert";
-import { ALERTS_ATOM_URL } from "../utils";
+import stringToStream from "string-to-stream";
+import { Alert } from "../../../utils/alert";
+import { ALERTS_ATOM_URL } from "../../../utils/index";
 
 export const getAlerts = (debug: boolean = false): Promise<Alert[]> => {
   const feedParser = new FeedParser({});
