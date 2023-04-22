@@ -7,30 +7,15 @@ import { DashboardStack } from "../lib/dashboard-stack";
 import { LambdaConnectStack } from "../lib/lambda-connect-stack";
 
 const app = new cdk.App();
-new MskStack(app, "MskStack", {
-  env: {
-    region: process.env.AWS_REGION,
-    account: process.env.AWS_ACCOUNT,
-  },
-});
 
-new WeatherServiceStack(app, "WeatherServiceStack", {
+const props = {
   env: {
     region: process.env.AWS_REGION,
     account: process.env.AWS_ACCOUNT,
   },
-});
+};
 
-new LambdaConnectStack(app, "LambdaConnectStack", {
-  env: {
-    region: process.env.AWS_REGION,
-    account: process.env.AWS_ACCOUNT,
-  },
-});
-
-new DashboardStack(app, "DashboardStack", {
-  env: {
-    region: process.env.AWS_REGION,
-    account: process.env.AWS_ACCOUNT,
-  },
-});
+new MskStack(app, "MskStack", props);
+new WeatherServiceStack(app, "WeatherServiceStack", props);
+new LambdaConnectStack(app, "LambdaConnectStack", props);
+new DashboardStack(app, "DashboardStack", props);

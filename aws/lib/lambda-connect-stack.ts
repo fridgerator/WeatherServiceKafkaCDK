@@ -1,10 +1,4 @@
-import {
-  CfnOutput,
-  Duration,
-  RemovalPolicy,
-  Stack,
-  StackProps,
-} from "aws-cdk-lib";
+import { Duration, RemovalPolicy, Stack, StackProps } from "aws-cdk-lib";
 import { Construct } from "constructs";
 import {
   Effect,
@@ -26,6 +20,7 @@ import { Runtime } from "aws-cdk-lib/aws-lambda";
 import { WEATHER_ALERTS_TOPIC } from "../utils";
 import path from "path";
 import { Topic } from "aws-cdk-lib/aws-sns";
+import { LogGroup } from "aws-cdk-lib/aws-logs";
 
 const PLUGIN_BUCKET = "msk-connect-plugin-bucket";
 const PLUGIN_FILE = "confluentinc-kafka-connect-aws-lambda-2.0.6.zip";
@@ -65,7 +60,7 @@ export class LambdaConnectStack extends Stack {
               fileKey: PLUGIN_FILE,
             },
           },
-          name: "kafka-connect-connector-plugin",
+          name: "msk-connect-lambda-plugin",
           description: "connector plugin",
         },
       },
@@ -81,7 +76,7 @@ export class LambdaConnectStack extends Stack {
               fileKey: PLUGIN_FILE,
             },
           },
-          name: "kafka-connect-connector-plugin",
+          name: "msk-connect-lambda-plugin",
           description: "connector plugin",
         },
       },
@@ -177,7 +172,7 @@ export class LambdaConnectStack extends Stack {
     mskConnectRole.addToPolicy(
       new PolicyStatement({
         effect: Effect.ALLOW,
-        actions: ["kafka-connect:*"],
+        actions: ["kafka-cluster:*"],
         resources: ["*"],
       })
     );
@@ -222,7 +217,7 @@ export class LambdaConnectStack extends Stack {
         authenticationType: "NONE",
       },
       kafkaClusterEncryptionInTransit: {
-        encryptionType: "PLAINTEXT",
+        encryptionType: "TLS",
       },
       kafkaConnectVersion: "2.7.1",
       plugins: [
@@ -234,6 +229,16 @@ export class LambdaConnectStack extends Stack {
         },
       ],
       serviceExecutionRoleArn: mskConnectRole.roleArn,
+      logDelivery: {
+        workerLogDelivery: {
+          cloudWatchLogs: {
+            enabled: true,
+            logGroup: new LogGroup(this, "lambda-connect-cw-logs", {
+              removalPolicy: RemovalPolicy.DESTROY,
+            }).logGroupName,
+          },
+        },
+      },
     };
 
     const mskConnect = new CfnConnector(this, "MskConnector", props);
