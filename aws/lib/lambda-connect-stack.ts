@@ -189,6 +189,7 @@ export class LambdaConnectStack extends Stack {
       "aws.lambda.region": this.props.env?.region!,
       "confluent.topic.bootstrap.servers": bootstrapParam.stringValue,
       "reporter.error.topic.replication.factor": "1",
+      "reporter.bootstrap.servers": bootstrapParam.stringValue,
       "bootstrap.servers": bootstrapParam.stringValue,
       "value.converter": "org.apache.kafka.connect.json.JsonConverter",
       "group.id": "msk-lambda-group",
