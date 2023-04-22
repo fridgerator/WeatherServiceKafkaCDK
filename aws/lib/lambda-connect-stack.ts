@@ -104,7 +104,7 @@ export class LambdaConnectStack extends Stack {
     );
     deletePlugin.node.addDependency(plugin);
 
-    const boostrapParam = StringParameter.fromStringParameterName(
+    const bootstrapParam = StringParameter.fromStringParameterName(
       this,
       "msk-brokers-from-param",
       "/msk/bootstrap-brokers"
@@ -141,7 +141,7 @@ export class LambdaConnectStack extends Stack {
       handler: "lambdaSinkHandler",
       runtime: Runtime.NODEJS_16_X,
       environment: {
-        BOOTSTRAP_SERVERS: boostrapParam.stringValue,
+        BOOTSTRAP_SERVERS: bootstrapParam.stringValue,
         NODE_ENV: "prod",
         TOPICS_MAP: JSON.stringify(topicsMap),
       },
@@ -186,6 +186,12 @@ export class LambdaConnectStack extends Stack {
       "aws.lambda.invocation.type": "async",
       "aws.lambda.batch.size": "50",
       "format.class": "io.confluent.connect.s3.format.json.JsonFormat",
+      "aws.lambda.region": this.props.env?.region!,
+      "confluent.topic.bootstrap.servers": bootstrapParam.stringValue,
+      "reporter.error.topic.replication.factor": "1",
+      "bootstrap.servers": bootstrapParam.stringValue,
+      "value.converter": "org.apache.kafka.connect.json.JsonConverter",
+      "group.id": "msk-lambda-group",
     };
 
     const props: CfnConnectorProps = {
@@ -193,7 +199,7 @@ export class LambdaConnectStack extends Stack {
       connectorName: "msk-s3-sink-connector",
       kafkaCluster: {
         apacheKafkaCluster: {
-          bootstrapServers: boostrapParam.stringValue,
+          bootstrapServers: bootstrapParam.stringValue,
           vpc: {
             securityGroups: [sgParam.stringValue],
             subnets: vpc.privateSubnets.map((s) => s.subnetId),
@@ -234,7 +240,7 @@ export class LambdaConnectStack extends Stack {
           cloudWatchLogs: {
             enabled: true,
             logGroup: new LogGroup(this, "lambda-connect-cw-logs", {
-              removalPolicy: RemovalPolicy.DESTROY,
+              removalPolicy: RemovalPolicy.RETAIN,
             }).logGroupName,
           },
         },
@@ -243,6 +249,6 @@ export class LambdaConnectStack extends Stack {
 
     const mskConnect = new CfnConnector(this, "MskConnector", props);
 
-    mskConnect.node.addDependency(plugin);
+    mskConnect.node.addDependency(deletePlugin);
   }
 }

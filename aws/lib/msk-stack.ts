@@ -98,13 +98,16 @@ export class MskStack extends Stack {
     const mskCluster = new Cluster(this, "msk-cluster", {
       clusterName: "msk-cluster",
       kafkaVersion: KafkaVersion.V2_8_1,
-      numberOfBrokerNodes: 2,
+      numberOfBrokerNodes: 1,
       vpc,
       instanceType: InstanceType.of(InstanceClass.T3, InstanceSize.SMALL),
       removalPolicy: RemovalPolicy.DESTROY,
       configurationInfo: {
         arn: configuration.getResponseField("Arn"),
         revision: 1,
+      },
+      ebsStorageInfo: {
+        volumeSize: 50,
       },
     });
     mskCluster.node.addDependency(configuration);
