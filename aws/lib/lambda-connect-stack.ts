@@ -1,10 +1,13 @@
 import { Duration, RemovalPolicy, Stack, StackProps } from "aws-cdk-lib";
 import { Construct } from "constructs";
 import {
+  CfnAccessKey,
   Effect,
+  ManagedPolicy,
   PolicyStatement,
   Role,
   ServicePrincipal,
+  User,
 } from "aws-cdk-lib/aws-iam";
 import { CfnConnector, CfnConnectorProps } from "aws-cdk-lib/aws-kafkaconnect";
 import {
@@ -177,14 +180,45 @@ export class LambdaConnectStack extends Stack {
       })
     );
 
+    const userPolicy = new ManagedPolicy(this, "connect-user-mp", {
+      statements: [
+        new PolicyStatement({
+          effect: Effect.ALLOW,
+          actions: ["lambda:InvokeFunction", "lambda:GetFunction"],
+          resources: ["*"], // TODO: lambda arn
+        }),
+        new PolicyStatement({
+          effect: Effect.ALLOW,
+          actions: ["kafka:*"],
+          resources: ["*"],
+        }),
+        new PolicyStatement({
+          effect: Effect.ALLOW,
+          actions: ["kafka-cluster:*"],
+          resources: ["*"],
+        }),
+      ],
+    });
+
+    const user = new User(this, "connect-user", {
+      userName: "connect-user",
+      managedPolicies: [userPolicy],
+    });
+
+    const accessKey = new CfnAccessKey(this, "connect-access-key", {
+      userName: user.userName,
+    });
+
     const lambdaConfig = {
       "connector.class":
         "io.confluent.connect.aws.lambda.AwsLambdaSinkConnector",
       "tasks.max": "1",
       topics: WEATHER_ALERTS_TOPIC,
-      "aws.lambda.function.name": weatherFunction.functionName, // TODO: lambda name
+      "aws.lambda.function.name": weatherFunction.functionName,
       "aws.lambda.invocation.type": "async",
       "aws.lambda.batch.size": "50",
+      "aws.access.key.id": accessKey.ref,
+      "aws.secret.access.key": accessKey.attrSecretAccessKey,
       "format.class": "io.confluent.connect.s3.format.json.JsonFormat",
       "aws.lambda.region": this.props.env?.region!,
       "confluent.topic.bootstrap.servers": bootstrapParam.stringValue,
@@ -197,7 +231,7 @@ export class LambdaConnectStack extends Stack {
 
     const props: CfnConnectorProps = {
       connectorConfiguration: lambdaConfig,
-      connectorName: "msk-s3-sink-connector",
+      connectorName: "msk-lambda-sink-connector",
       kafkaCluster: {
         apacheKafkaCluster: {
           bootstrapServers: bootstrapParam.stringValue,
