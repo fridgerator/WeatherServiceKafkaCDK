@@ -26,7 +26,8 @@ import { Topic } from "aws-cdk-lib/aws-sns";
 import { LogGroup } from "aws-cdk-lib/aws-logs";
 
 const PLUGIN_BUCKET = "msk-connect-plugin-bucket";
-const PLUGIN_FILE = "confluentinc-kafka-connect-aws-lambda-2.0.6.zip";
+// const PLUGIN_FILE = "confluentinc-kafka-connect-aws-lambda-2.0.6.zip";
+const PLUGIN_FILE = "kafka-connect-lambda-1.3.0.jar";
 
 export class LambdaConnectStack extends Stack {
   props: StackProps;
@@ -161,7 +162,11 @@ export class LambdaConnectStack extends Stack {
     mskConnectRole.addToPolicy(
       new PolicyStatement({
         effect: Effect.ALLOW,
-        actions: ["lambda:InvokeFunction", "lambda:GetFunction"],
+        actions: [
+          "lambda:InvokeFunction",
+          "lambda:GetFunction",
+          "lambda:InvokeAsync",
+        ],
         resources: ["*"], // TODO: lambda arn
       })
     );
@@ -179,54 +184,77 @@ export class LambdaConnectStack extends Stack {
         resources: ["*"],
       })
     );
+    mskConnectRole.roleName;
 
-    const userPolicy = new ManagedPolicy(this, "connect-user-mp", {
-      statements: [
-        new PolicyStatement({
-          effect: Effect.ALLOW,
-          actions: ["lambda:InvokeFunction", "lambda:GetFunction"],
-          resources: ["*"], // TODO: lambda arn
-        }),
-        new PolicyStatement({
-          effect: Effect.ALLOW,
-          actions: ["kafka:*"],
-          resources: ["*"],
-        }),
-        new PolicyStatement({
-          effect: Effect.ALLOW,
-          actions: ["kafka-cluster:*"],
-          resources: ["*"],
-        }),
-      ],
-    });
+    // const userPolicy = new ManagedPolicy(this, "connect-user-mp", {
+    //   statements: [
+    //     new PolicyStatement({
+    //       effect: Effect.ALLOW,
+    //       actions: ["lambda:InvokeFunction", "lambda:GetFunction"],
+    //       resources: ["*"], // TODO: lambda arn
+    //     }),
+    //     new PolicyStatement({
+    //       effect: Effect.ALLOW,
+    //       actions: ["kafka:*"],
+    //       resources: ["*"],
+    //     }),
+    //     new PolicyStatement({
+    //       effect: Effect.ALLOW,
+    //       actions: ["kafka-cluster:*"],
+    //       resources: ["*"],
+    //     }),
+    //   ],
+    // });
 
-    const user = new User(this, "connect-user", {
-      userName: "connect-user",
-      managedPolicies: [userPolicy],
-    });
+    // const user = new User(this, "connect-user", {
+    //   userName: "connect-user",
+    //   managedPolicies: [userPolicy],
+    // });
 
-    const accessKey = new CfnAccessKey(this, "connect-access-key", {
-      userName: user.userName,
-    });
+    // const accessKey = new CfnAccessKey(this, "connect-access-key", {
+    //   userName: user.userName,
+    // });
+
+    // const lambdaConfig = {
+    //   "connector.class":
+    //     "io.confluent.connect.aws.lambda.AwsLambdaSinkConnector",
+    //   "tasks.max": "1",
+    //   topics: WEATHER_ALERTS_TOPIC,
+    //   "aws.lambda.function.name": weatherFunction.functionName,
+    //   "aws.lambda.invocation.type": "async",
+    //   "aws.lambda.batch.size": "50",
+    //   "aws.access.key.id": accessKey.ref,
+    //   "aws.secret.access.key": accessKey.attrSecretAccessKey,
+    //   "format.class": "io.confluent.connect.s3.format.json.JsonFormat",
+    //   "aws.lambda.region": this.props.env?.region!,
+    //   "confluent.topic.bootstrap.servers": bootstrapParam.stringValue,
+    //   "reporter.error.topic.replication.factor": "1",
+    //   "reporter.bootstrap.servers": bootstrapParam.stringValue,
+    //   "bootstrap.servers": bootstrapParam.stringValue,
+    //   "value.converter": "org.apache.kafka.connect.json.JsonConverter",
+    //   "group.id": "msk-lambda-group",
+    // };
 
     const lambdaConfig = {
       "connector.class":
-        "io.confluent.connect.aws.lambda.AwsLambdaSinkConnector",
-      "tasks.max": "1",
+        "com.nordstrom.kafka.connect.lambda.LambdaSinkConnector",
+      "aws.credentials.provider.class":
+        "com.nordstrom.kafka.connect.auth.AWSAssumeRoleCredentialsProvider",
+      "aws.credentials.provider.role.arn": mskConnectRole.roleArn,
+      "aws.credentials.provider.session.name": mskConnectRole.roleName,
+      "aws.lambda.function.arn": weatherFunction.functionArn,
+      "aws.lambda.invocation.mode": "ASYNC",
+      "aws.lambda.batch.enabled": "true",
+      "aws.region": this.props.env?.region!,
+      "payload.formatter.class":
+        "com.nordstrom.kafka.connect.formatters.JsonPayloadFormatter",
       topics: WEATHER_ALERTS_TOPIC,
-      "aws.lambda.function.name": weatherFunction.functionName,
-      "aws.lambda.invocation.type": "async",
-      "aws.lambda.batch.size": "50",
-      "aws.access.key.id": accessKey.ref,
-      "aws.secret.access.key": accessKey.attrSecretAccessKey,
-      "format.class": "io.confluent.connect.s3.format.json.JsonFormat",
-      "aws.lambda.region": this.props.env?.region!,
-      "confluent.topic.bootstrap.servers": bootstrapParam.stringValue,
-      "reporter.error.topic.replication.factor": "1",
-      "reporter.bootstrap.servers": bootstrapParam.stringValue,
-      "bootstrap.servers": bootstrapParam.stringValue,
+      "tasks.max": "1",
       "value.converter": "org.apache.kafka.connect.json.JsonConverter",
-      "group.id": "msk-lambda-group",
+      "value.converters.schemas.enable": "false",
+      "bootstrap.servers": bootstrapParam.stringValue,
+      "schemas.enable": "false",
+      "schema.enabled": "false",
     };
 
     const props: CfnConnectorProps = {
