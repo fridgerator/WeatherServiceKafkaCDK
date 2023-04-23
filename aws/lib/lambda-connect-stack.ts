@@ -251,7 +251,7 @@ export class LambdaConnectStack extends Stack {
       topics: WEATHER_ALERTS_TOPIC,
       "tasks.max": "1",
       "value.converter": "org.apache.kafka.connect.json.JsonConverter",
-      "value.converters.schemas.enable": "false",
+      "value.converter.schemas.enable": "false",
       "bootstrap.servers": bootstrapParam.stringValue,
       "schemas.enable": "false",
       "schema.enabled": "false",
