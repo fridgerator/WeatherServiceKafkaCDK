@@ -1,33 +1,18 @@
-import { Duration, RemovalPolicy, Stack, StackProps } from "aws-cdk-lib";
+import { Stack, StackProps } from "aws-cdk-lib";
 import { Construct } from "constructs";
-import {
-  CfnAccessKey,
-  Effect,
-  ManagedPolicy,
-  PolicyStatement,
-  Role,
-  ServicePrincipal,
-  User,
-} from "aws-cdk-lib/aws-iam";
-import { CfnConnector, CfnConnectorProps } from "aws-cdk-lib/aws-kafkaconnect";
-import {
-  AwsCustomResource,
-  AwsCustomResourcePolicy,
-  PhysicalResourceId,
-} from "aws-cdk-lib/custom-resources";
 import { StringParameter } from "aws-cdk-lib/aws-ssm";
-import { SubnetType, Vpc } from "aws-cdk-lib/aws-ec2";
-import { NodejsFunction } from "aws-cdk-lib/aws-lambda-nodejs";
-import { Runtime } from "aws-cdk-lib/aws-lambda";
-
-import { WEATHER_ALERTS_TOPIC } from "../utils";
+import { SecurityGroup, Vpc } from "aws-cdk-lib/aws-ec2";
 import path from "path";
 import { Topic } from "aws-cdk-lib/aws-sns";
-import { LogGroup } from "aws-cdk-lib/aws-logs";
-
-const PLUGIN_BUCKET = "msk-connect-plugin-bucket";
-// const PLUGIN_FILE = "confluentinc-kafka-connect-aws-lambda-2.0.6.zip";
-const PLUGIN_FILE = "kafka-connect-lambda-1.3.0.jar";
+import { ApplicationLoadBalancedFargateService } from "aws-cdk-lib/aws-ecs-patterns";
+import {
+  AwsLogDriver,
+  Cluster,
+  ContainerImage,
+  FargateService,
+  FargateTaskDefinition,
+} from "aws-cdk-lib/aws-ecs";
+import { DockerImageAsset } from "aws-cdk-lib/aws-ecr-assets";
 
 export class LambdaConnectStack extends Stack {
   props: StackProps;
@@ -39,74 +24,9 @@ export class LambdaConnectStack extends Stack {
   }
 
   build() {
-    const plugin = new AwsCustomResource(this, "msk-connect-plugin", {
-      policy: AwsCustomResourcePolicy.fromStatements([
-        new PolicyStatement({
-          effect: Effect.ALLOW,
-          actions: ["s3:GetObject"],
-          resources: [`arn:aws:s3:::${PLUGIN_BUCKET}/*`],
-        }),
-        new PolicyStatement({
-          effect: Effect.ALLOW,
-          actions: ["kafkaconnect:CreateCustomPlugin"],
-          resources: ["*"],
-        }),
-      ]),
-      onUpdate: {
-        service: "KafkaConnect",
-        action: "createCustomPlugin",
-        physicalResourceId: PhysicalResourceId.of("customConnectorPlugin"),
-        parameters: {
-          contentType: "ZIP",
-          location: {
-            s3Location: {
-              bucketArn: `arn:aws:s3:::${PLUGIN_BUCKET}`,
-              fileKey: PLUGIN_FILE,
-            },
-          },
-          name: "msk-connect-lambda-plugin",
-          description: "connector plugin",
-        },
-      },
-      onCreate: {
-        service: "KafkaConnect",
-        action: "createCustomPlugin",
-        physicalResourceId: PhysicalResourceId.of("customConnectorPlugin"),
-        parameters: {
-          contentType: "ZIP",
-          location: {
-            s3Location: {
-              bucketArn: `arn:aws:s3:::${PLUGIN_BUCKET}`,
-              fileKey: PLUGIN_FILE,
-            },
-          },
-          name: "msk-connect-lambda-plugin",
-          description: "connector plugin",
-        },
-      },
+    const vpc = Vpc.fromLookup(this, "msk-vpc-lookup", {
+      vpcName: "msk-vpc",
     });
-
-    const deletePlugin = new AwsCustomResource(
-      this,
-      "msk-connect-plugin-delete",
-      {
-        policy: AwsCustomResourcePolicy.fromStatements([
-          new PolicyStatement({
-            effect: Effect.ALLOW,
-            actions: ["kafkaconnect:DeleteCustomPlugin"],
-            resources: ["*"],
-          }),
-        ]),
-        onDelete: {
-          service: "KafkaConnect",
-          action: "deleteCustomPlugin",
-          parameters: {
-            customPluginArn: plugin.getResponseField("customPluginArn"),
-          },
-        },
-      }
-    );
-    deletePlugin.node.addDependency(plugin);
 
     const bootstrapParam = StringParameter.fromStringParameterName(
       this,
@@ -114,19 +34,9 @@ export class LambdaConnectStack extends Stack {
       "/msk/bootstrap-brokers"
     );
 
-    const sgParam = StringParameter.fromStringParameterName(
-      this,
-      "sg-from-param",
-      "/msk/cluster-sg"
-    );
-
-    const vpc = Vpc.fromLookup(this, "msk-vpc-lookup", {
-      vpcName: "msk-vpc",
-    });
-
     let topicsMap: { [key: string]: string } = {
       NE: "",
-      TS: "",
+      TX: "",
       IL: "",
       MA: "",
       TN: "",
@@ -139,179 +49,51 @@ export class LambdaConnectStack extends Stack {
       topicsMap[state] = topic.topicArn;
     }
 
-    const weatherFunction = new NodejsFunction(this, "lambda-sink", {
-      functionName: "lambda-sink",
-      entry: path.join(__dirname, "handlers", "lambda-sink/index.js"),
-      handler: "lambdaSinkHandler",
-      runtime: Runtime.NODEJS_16_X,
-      environment: {
-        BOOTSTRAP_SERVERS: bootstrapParam.stringValue,
-        NODE_ENV: "prod",
-        TOPICS_MAP: JSON.stringify(topicsMap),
-      },
-      timeout: Duration.minutes(1),
+    const dockerImage = new DockerImageAsset(this, "sink-fargate-image", {
+      directory: path.join(__dirname, "../../src/lambda_sink"),
+    });
+
+    const securityGroupParam = StringParameter.fromStringParameterName(
+      this,
+      "sg",
+      "/msk/cluster-sg"
+    );
+
+    const cluster = Cluster.fromClusterAttributes(this, "cluster", {
+      clusterName: "weather-service-cluster",
       vpc,
-      vpcSubnets: {
-        subnetType: SubnetType.PRIVATE_WITH_EGRESS,
-      },
-    });
-
-    const mskConnectRole = new Role(this, "MskConnectRole", {
-      assumedBy: new ServicePrincipal("kafkaconnect.amazonaws.com"),
-    });
-    mskConnectRole.addToPolicy(
-      new PolicyStatement({
-        effect: Effect.ALLOW,
-        actions: [
-          "lambda:InvokeFunction",
-          "lambda:GetFunction",
-          "lambda:InvokeAsync",
-        ],
-        resources: ["*"], // TODO: lambda arn
-      })
-    );
-    mskConnectRole.addToPolicy(
-      new PolicyStatement({
-        effect: Effect.ALLOW,
-        actions: ["kafka:*"],
-        resources: ["*"],
-      })
-    );
-    mskConnectRole.addToPolicy(
-      new PolicyStatement({
-        effect: Effect.ALLOW,
-        actions: ["kafka-cluster:*"],
-        resources: ["*"],
-      })
-    );
-    mskConnectRole.roleName;
-
-    // const userPolicy = new ManagedPolicy(this, "connect-user-mp", {
-    //   statements: [
-    //     new PolicyStatement({
-    //       effect: Effect.ALLOW,
-    //       actions: ["lambda:InvokeFunction", "lambda:GetFunction"],
-    //       resources: ["*"], // TODO: lambda arn
-    //     }),
-    //     new PolicyStatement({
-    //       effect: Effect.ALLOW,
-    //       actions: ["kafka:*"],
-    //       resources: ["*"],
-    //     }),
-    //     new PolicyStatement({
-    //       effect: Effect.ALLOW,
-    //       actions: ["kafka-cluster:*"],
-    //       resources: ["*"],
-    //     }),
-    //   ],
-    // });
-
-    // const user = new User(this, "connect-user", {
-    //   userName: "connect-user",
-    //   managedPolicies: [userPolicy],
-    // });
-
-    // const accessKey = new CfnAccessKey(this, "connect-access-key", {
-    //   userName: user.userName,
-    // });
-
-    // const lambdaConfig = {
-    //   "connector.class":
-    //     "io.confluent.connect.aws.lambda.AwsLambdaSinkConnector",
-    //   "tasks.max": "1",
-    //   topics: WEATHER_ALERTS_TOPIC,
-    //   "aws.lambda.function.name": weatherFunction.functionName,
-    //   "aws.lambda.invocation.type": "async",
-    //   "aws.lambda.batch.size": "50",
-    //   "aws.access.key.id": accessKey.ref,
-    //   "aws.secret.access.key": accessKey.attrSecretAccessKey,
-    //   "format.class": "io.confluent.connect.s3.format.json.JsonFormat",
-    //   "aws.lambda.region": this.props.env?.region!,
-    //   "confluent.topic.bootstrap.servers": bootstrapParam.stringValue,
-    //   "reporter.error.topic.replication.factor": "1",
-    //   "reporter.bootstrap.servers": bootstrapParam.stringValue,
-    //   "bootstrap.servers": bootstrapParam.stringValue,
-    //   "value.converter": "org.apache.kafka.connect.json.JsonConverter",
-    //   "group.id": "msk-lambda-group",
-    // };
-
-    const lambdaConfig = {
-      "connector.class":
-        "com.nordstrom.kafka.connect.lambda.LambdaSinkConnector",
-      "aws.credentials.provider.class":
-        "com.nordstrom.kafka.connect.auth.AWSAssumeRoleCredentialsProvider",
-      "aws.credentials.provider.role.arn": mskConnectRole.roleArn,
-      "aws.credentials.provider.session.name": mskConnectRole.roleName,
-      "aws.lambda.function.arn": weatherFunction.functionArn,
-      "aws.lambda.invocation.mode": "ASYNC",
-      "aws.lambda.batch.enabled": "true",
-      "aws.region": this.props.env?.region!,
-      "payload.formatter.class":
-        "com.nordstrom.kafka.connect.formatters.JsonPayloadFormatter",
-      topics: WEATHER_ALERTS_TOPIC,
-      "tasks.max": "1",
-      "value.converter": "org.apache.kafka.connect.json.JsonConverter",
-      "value.converter.schemas.enable": "false",
-      "bootstrap.servers": bootstrapParam.stringValue,
-      "schemas.enable": "false",
-      "schema.enabled": "false",
-    };
-
-    const props: CfnConnectorProps = {
-      connectorConfiguration: lambdaConfig,
-      connectorName: "msk-lambda-sink-connector",
-      kafkaCluster: {
-        apacheKafkaCluster: {
-          bootstrapServers: bootstrapParam.stringValue,
-          vpc: {
-            securityGroups: [sgParam.stringValue],
-            subnets: vpc.privateSubnets.map((s) => s.subnetId),
-          },
-        },
-      },
-      capacity: {
-        autoScaling: {
-          maxWorkerCount: 2,
-          mcuCount: 1,
-          minWorkerCount: 1,
-          scaleInPolicy: {
-            cpuUtilizationPercentage: 50,
-          },
-          scaleOutPolicy: {
-            cpuUtilizationPercentage: 80,
-          },
-        },
-      },
-      kafkaClusterClientAuthentication: {
-        authenticationType: "NONE",
-      },
-      kafkaClusterEncryptionInTransit: {
-        encryptionType: "TLS",
-      },
-      kafkaConnectVersion: "2.7.1",
-      plugins: [
-        {
-          customPlugin: {
-            customPluginArn: plugin.getResponseField("customPluginArn"),
-            revision: 1,
-          },
-        },
+      securityGroups: [
+        SecurityGroup.fromSecurityGroupId(
+          this,
+          "sg2",
+          securityGroupParam.stringValue
+        ),
       ],
-      serviceExecutionRoleArn: mskConnectRole.roleArn,
-      logDelivery: {
-        workerLogDelivery: {
-          cloudWatchLogs: {
-            enabled: true,
-            logGroup: new LogGroup(this, "lambda-connect-cw-logs", {
-              removalPolicy: RemovalPolicy.RETAIN,
-            }).logGroupName,
-          },
-        },
+    });
+
+    const logging = new AwsLogDriver({
+      streamPrefix: "lambda-connect",
+    });
+
+    const taskDef = new FargateTaskDefinition(this, "lambda-connect-taskdef", {
+      memoryLimitMiB: 1024,
+      cpu: 512,
+    });
+    taskDef.addContainer("TaskContainer", {
+      image: ContainerImage.fromDockerImageAsset(dockerImage),
+      logging,
+      environment: {
+        NODE_ENV: "prod",
+        BOOTSTRAP_SERVERS: bootstrapParam.stringValue,
+        TOPICS_MAP: JSON.stringify(topicsMap),
+        AWS_REGION: this.props.env?.region!,
       },
-    };
+    });
 
-    const mskConnect = new CfnConnector(this, "MskConnector", props);
-
-    mskConnect.node.addDependency(deletePlugin);
+    const svc = new FargateService(this, "lambda-connect-svc", {
+      cluster,
+      taskDefinition: taskDef,
+      desiredCount: 1,
+    });
   }
 }

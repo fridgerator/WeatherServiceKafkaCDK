@@ -1,5 +1,5 @@
-import { CfnOutput, RemovalPolicy, Stack, StackProps } from "aws-cdk-lib";
-import { Vpc } from "aws-cdk-lib/aws-ec2";
+import { CfnOutput, Stack, StackProps } from "aws-cdk-lib";
+import { Vpc, SecurityGroup } from "aws-cdk-lib/aws-ec2";
 import { DockerImageAsset } from "aws-cdk-lib/aws-ecr-assets";
 import { Cluster, ContainerImage } from "aws-cdk-lib/aws-ecs";
 import { ApplicationLoadBalancedFargateService } from "aws-cdk-lib/aws-ecs-patterns";
@@ -21,8 +21,22 @@ export class DashboardStack extends Stack {
       vpcName: "msk-vpc",
     });
 
-    const cluster = new Cluster(this, "dashboard-fargate-cluster", {
+    const securityGroupParam = StringParameter.fromStringParameterName(
+      this,
+      "sg",
+      "/msk/cluster-sg"
+    );
+
+    const cluster = Cluster.fromClusterAttributes(this, "cluster", {
+      clusterName: "weather-service-cluster",
       vpc,
+      securityGroups: [
+        SecurityGroup.fromSecurityGroupId(
+          this,
+          "sg2",
+          securityGroupParam.stringValue
+        ),
+      ],
     });
 
     const dockerImage = new DockerImageAsset(this, "dashboard-fargate-image", {
