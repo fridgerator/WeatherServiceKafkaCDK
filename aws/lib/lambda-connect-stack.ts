@@ -13,6 +13,12 @@ import {
   FargateTaskDefinition,
 } from "aws-cdk-lib/aws-ecs";
 import { DockerImageAsset } from "aws-cdk-lib/aws-ecr-assets";
+import {
+  Effect,
+  PolicyStatement,
+  Role,
+  ServicePrincipal,
+} from "aws-cdk-lib/aws-iam";
 
 export class LambdaConnectStack extends Stack {
   props: StackProps;
@@ -75,9 +81,21 @@ export class LambdaConnectStack extends Stack {
       streamPrefix: "lambda-connect",
     });
 
+    const taskRole = new Role(this, "task-role", {
+      assumedBy: new ServicePrincipal("ecs-tasks.amazonaws.com"),
+    });
+    taskRole.addToPolicy(
+      new PolicyStatement({
+        effect: Effect.ALLOW,
+        actions: ["sns:Publish"],
+        resources: ["*"],
+      })
+    );
+
     const taskDef = new FargateTaskDefinition(this, "lambda-connect-taskdef", {
       memoryLimitMiB: 1024,
       cpu: 512,
+      taskRole,
     });
     taskDef.addContainer("TaskContainer", {
       image: ContainerImage.fromDockerImageAsset(dockerImage),
@@ -90,7 +108,7 @@ export class LambdaConnectStack extends Stack {
       },
     });
 
-    const svc = new FargateService(this, "lambda-connect-svc", {
+    new FargateService(this, "lambda-connect-svc", {
       cluster,
       taskDefinition: taskDef,
       desiredCount: 1,
