@@ -1,12 +1,14 @@
-FROM node:16-alpine
+FROM node:18-alpine
 
 WORKDIR /app
 
-COPY package.json yarn.lock /app/
-COPY dist/ /app/dist/
+COPY package.json yarn.lock webpack.config.js .babelrc /app/
 COPY src/ /app/src/
+COPY public/ /app/public/
+ENV NODE_OPTIONS=--openssl-legacy-provider
 
-RUN yarn
+RUN yarn && \
+  yarn build
 
 EXPOSE 8080
 
